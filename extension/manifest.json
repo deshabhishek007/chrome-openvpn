@@ -2,8 +2,8 @@
   "manifest_version": 3,
   "name": "OpenVPN Bridge",
   "description": "Route only Chrome's traffic through your local OpenVPN bridge (SOCKS5 on 127.0.0.1). The rest of the system stays on your normal connection.",
-  "version": "1.1.0",
-  "permissions": ["proxy", "storage", "nativeMessaging"],
+  "version": "1.2.0",
+  "permissions": ["proxy", "storage", "nativeMessaging", "activeTab"],
   "background": {
     "service_worker": "background.js"
   },

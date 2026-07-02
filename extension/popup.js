@@ -1,139 +1,185 @@
-const dot = document.getElementById("dot");
-const profileSel = document.getElementById("profileSel");
-const bridgeBtn = document.getElementById("bridgeBtn");
-const bridgeStatus = document.getElementById("bridgeStatus");
-const toggle = document.getElementById("toggle");
-const hostInput = document.getElementById("host");
-const portInput = document.getElementById("port");
-const modeAllBtn = document.getElementById("modeAll");
-const modeSitesBtn = document.getElementById("modeSites");
-const sitesWrap = document.getElementById("sitesWrap");
-const sitesInput = document.getElementById("sites");
-const status = document.getElementById("status");
+const $ = (id) => document.getElementById(id);
+const hero = $("hero");
+const heroText = $("heroText");
+const heroIp = $("heroIp");
+const profileSel = $("profileSel");
+const bridgeBtn = $("bridgeBtn");
+const bridgeBtnText = $("bridgeBtnText");
+const bridgeStatus = $("bridgeStatus");
+const modeAllBtn = $("modeAll");
+const modeSitesBtn = $("modeSites");
+const sitesWrap = $("sitesWrap");
+const sitesInput = $("sites");
+const addSiteBtn = $("addSite");
+const toggle = $("toggle");
+const switchSub = $("switchSub");
+const hostInput = $("host");
+const portInput = $("port");
 
-let enabled = false;
-let mode = "all";
+let cfg = { enabled: false, mode: "all", sites: [], host: "127.0.0.1", port: 1080 };
+let bridgeRunning = false;
+let ipCheckSeq = 0;
+
+// ---- config / proxy state ---------------------------------------------
 
 function parseSites() {
   return sitesInput.value
     .split("\n")
     .map((s) => s.trim().toLowerCase())
     .map((s) => s.replace(/^https?:\/\//, "").replace(/\/.*$/, ""))
-    .filter((s) => s.length > 0);
+    .filter((s, i, a) => s.length > 0 && a.indexOf(s) === i);
+}
+
+async function saveCfg(patch = {}) {
+  cfg = { ...cfg, ...patch };
+  await chrome.runtime.sendMessage({
+    type: "set-state",
+    enabled: cfg.enabled,
+    host: hostInput.value.trim() || "127.0.0.1",
+    port: Number(portInput.value) || 1080,
+    mode: cfg.mode,
+    sites: parseSites(),
+  });
 }
 
 function render() {
-  dot.className = "dot" + (enabled ? " on" : "");
-  toggle.textContent = enabled
-    ? "Disconnect (back to direct)"
-    : mode === "sites"
-      ? "Route listed sites via VPN"
-      : "Connect Chrome to VPN";
-  toggle.classList.toggle("on", enabled);
-  modeAllBtn.classList.toggle("active", mode === "all");
-  modeSitesBtn.classList.toggle("active", mode === "sites");
-  sitesWrap.classList.toggle("visible", mode === "sites");
-  // Lock inputs while connected so the applied config matches the UI.
-  hostInput.disabled = enabled;
-  portInput.disabled = enabled;
-  sitesInput.disabled = enabled;
-  modeAllBtn.disabled = enabled;
-  modeSitesBtn.disabled = enabled;
+  toggle.checked = cfg.enabled;
+  modeAllBtn.classList.toggle("active", cfg.mode === "all");
+  modeSitesBtn.classList.toggle("active", cfg.mode === "sites");
+  sitesWrap.classList.toggle("visible", cfg.mode === "sites");
+  switchSub.textContent =
+    cfg.mode === "sites"
+      ? `${parseSites().length} site(s) via VPN, rest direct`
+      : "All Chrome traffic";
 }
 
-async function showPublicIP() {
-  status.innerHTML = "Checking public IP…";
+function setHero(state, text, ipHtml) {
+  hero.className = state; // "", "on", "err"
+  heroText.textContent = text;
+  if (ipHtml !== undefined) heroIp.innerHTML = ipHtml;
+}
+
+async function fetchIp() {
+  const controller = new AbortController();
+  const t = setTimeout(() => controller.abort(), 8000);
   try {
-    const controller = new AbortController();
-    const t = setTimeout(() => controller.abort(), 8000);
-    const res = await fetch("https://api.ipify.org?format=json", {
-      cache: "no-store",
-      signal: controller.signal,
+    const res = await fetch("https://ipwho.is/", {
+      cache: "no-store", signal: controller.signal,
     });
-    clearTimeout(t);
-    const { ip } = await res.json();
-    if (enabled && mode === "sites") {
-      // The IP-check site itself isn't in the VPN list, so this shows
-      // the direct IP. Say so instead of confusing the user.
-      status.innerHTML =
-        `Listed sites go via VPN.<br>Other traffic direct (IP: <b>${ip}</b>)`;
+    const d = await res.json();
+    if (d && d.ip) {
+      const flag = d.flag && d.flag.emoji ? " " + d.flag.emoji : "";
+      return { ip: d.ip, where: (d.country || "") + flag };
+    }
+  } catch (e) { /* fall through to plain lookup */ }
+  finally { clearTimeout(t); }
+  const res = await fetch("https://api.ipify.org?format=json", { cache: "no-store" });
+  return { ip: (await res.json()).ip, where: "" };
+}
+
+async function updateHero() {
+  const seq = ++ipCheckSeq;
+  if (!cfg.enabled) {
+    setHero("", "Direct connection", "Checking IP…");
+  } else if (cfg.mode === "sites") {
+    setHero("on", "Split tunnel active", "Checking IP…");
+  } else {
+    setHero("on", "Protected — via VPN", "Checking IP…");
+  }
+  try {
+    const { ip, where } = await fetchIp();
+    if (seq !== ipCheckSeq) return; // a newer check superseded this one
+    const loc = where ? ` · ${where}` : "";
+    if (cfg.enabled && cfg.mode === "sites") {
+      heroIp.innerHTML = `Listed sites via VPN · other traffic: <b>${ip}</b>${loc}`;
     } else {
-      status.innerHTML =
-        `Chrome's public IP: <b>${ip}</b>` + (enabled ? " (via VPN)" : " (direct)");
+      heroIp.innerHTML = `IP <b>${ip}</b>${loc}`;
     }
   } catch (e) {
-    if (enabled) {
-      dot.className = "dot err";
-      status.innerHTML =
-        "Could not reach the internet through the proxy.<br>" +
-        "Is the bridge running? Start it with <b>./vpn-bridge.sh</b>";
+    if (seq !== ipCheckSeq) return;
+    if (cfg.enabled && cfg.mode === "all") {
+      setHero("err", "Proxy unreachable",
+        "Start the tunnel below, or run <b>./vpn-bridge.sh</b>");
     } else {
-      status.textContent = "Could not determine public IP.";
+      heroIp.textContent = "Could not determine IP.";
     }
   }
 }
 
-async function load() {
-  const cfg = await chrome.runtime.sendMessage({ type: "get-state" });
-  enabled = cfg.enabled;
-  mode = cfg.mode || "all";
-  hostInput.value = cfg.host;
-  portInput.value = cfg.port;
-  sitesInput.value = (cfg.sites || []).join("\n");
+// ---- events: routing & switch ------------------------------------------
+
+toggle.addEventListener("change", async () => {
+  await saveCfg({ enabled: toggle.checked });
   render();
-  showPublicIP();
+  setTimeout(updateHero, 300);
+});
+
+modeAllBtn.addEventListener("click", async () => {
+  await saveCfg({ mode: "all" });
+  render();
+  setTimeout(updateHero, 300);
+});
+
+modeSitesBtn.addEventListener("click", async () => {
+  await saveCfg({ mode: "sites" });
+  render();
+  setTimeout(updateHero, 300);
+});
+
+let sitesTimer = null;
+sitesInput.addEventListener("input", () => {
+  clearTimeout(sitesTimer);
+  sitesTimer = setTimeout(async () => {
+    await saveCfg();
+    render();
+  }, 500);
+});
+
+addSiteBtn.addEventListener("click", async () => {
+  try {
+    const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
+    const host = new URL(tab.url).hostname.replace(/^www\./, "");
+    if (!/^[a-z0-9.-]+$/i.test(host)) throw new Error("not a website");
+    const sites = parseSites();
+    if (!sites.includes(host)) {
+      sitesInput.value = [...sites, host].join("\n");
+      await saveCfg();
+      render();
+      setTimeout(updateHero, 300);
+    }
+  } catch (e) {
+    bridgeStatus.textContent = "Current tab has no usable site address.";
+  }
+});
+
+for (const el of [hostInput, portInput]) {
+  el.addEventListener("change", () => saveCfg().then(() => setTimeout(updateHero, 300)));
 }
 
-modeAllBtn.addEventListener("click", () => {
-  mode = "all";
-  render();
-});
-modeSitesBtn.addEventListener("click", () => {
-  mode = "sites";
-  render();
-});
-
-toggle.addEventListener("click", async () => {
-  const sites = parseSites();
-  if (!enabled && mode === "sites" && sites.length === 0) {
-    status.innerHTML = "Add at least one domain to the list first.";
-    return;
-  }
-  toggle.disabled = true;
-  enabled = !enabled;
-  await chrome.runtime.sendMessage({
-    type: "set-state",
-    enabled,
-    host: hostInput.value.trim() || "127.0.0.1",
-    port: Number(portInput.value) || 1080,
-    mode,
-    sites,
-  });
-  toggle.disabled = false;
-  render();
-  // Give the proxy switch a moment to settle before probing.
-  setTimeout(showPublicIP, 300);
-});
-
-// --- local bridge (tunnel) controls via native messaging ---------------
-
-let bridgeRunning = false;
+// ---- local bridge (tunnel) ----------------------------------------------
 
 function bridge(payload) {
   return chrome.runtime.sendMessage({ type: "bridge", payload });
 }
 
+function setBridgeBusy(busy, label) {
+  bridgeBtn.disabled = busy;
+  bridgeBtn.classList.toggle("busy", busy);
+  if (label) bridgeBtnText.textContent = label;
+}
+
 function renderBridge(st) {
   bridgeRunning = Boolean(st && st.running);
-  bridgeBtn.textContent = bridgeRunning ? "Stop" : "Start";
+  bridgeBtnText.textContent = bridgeRunning ? "Stop" : "Start";
   bridgeBtn.classList.toggle("stop", bridgeRunning);
+  bridgeBtn.classList.remove("busy");
   bridgeBtn.disabled = false;
   profileSel.disabled = bridgeRunning;
   if (bridgeRunning) {
     bridgeStatus.innerHTML = `Tunnel <b>up</b>: ${st.profile || "?"} (${st.iface})`;
     if (st.profile) profileSel.value = st.profile;
   } else if (st && st.tunnel && !st.proxy) {
-    bridgeStatus.innerHTML = "Tunnel up but proxy down — press Start to repair.";
+    bridgeStatus.textContent = "Tunnel up but proxy down — press Start to repair.";
   } else {
     bridgeStatus.innerHTML = "Tunnel <b>down</b>.";
   }
@@ -145,8 +191,7 @@ async function loadBridge() {
     bridge({ cmd: "status" }),
   ]);
   if (!list.ok || list.notInstalled || !st.ok) {
-    bridgeStatus.textContent =
-      (list.error || st.error || "Bridge control unavailable.");
+    bridgeStatus.textContent = list.error || st.error || "Bridge control unavailable.";
     bridgeBtn.disabled = true;
     profileSel.disabled = true;
     return;
@@ -167,27 +212,38 @@ async function loadBridge() {
 }
 
 bridgeBtn.addEventListener("click", async () => {
-  bridgeBtn.disabled = true;
   profileSel.disabled = true;
+  let res;
   if (bridgeRunning) {
-    bridgeStatus.textContent = "Stopping tunnel…";
-    const res = await bridge({ cmd: "stop" });
-    if (!res.ok) bridgeStatus.textContent = res.error;
+    setBridgeBusy(true, "Stopping…");
+    res = await bridge({ cmd: "stop" });
   } else {
-    bridgeStatus.textContent =
-      "Starting tunnel… (takes a few seconds; keep this open)";
-    const res = await bridge({ cmd: "start", profile: profileSel.value });
-    if (!res.ok) bridgeStatus.textContent = res.error;
+    setBridgeBusy(true, "Starting…");
+    bridgeStatus.textContent = "Connecting tunnel — takes a few seconds…";
+    res = await bridge({ cmd: "start", profile: profileSel.value });
   }
+  if (!res.ok) bridgeStatus.textContent = res.error;
   const st = await bridge({ cmd: "status" });
   if (st.ok) renderBridge(st);
-  else bridgeBtn.disabled = false;
-  // proxy state may have been auto-toggled by the background worker
-  const cfg = await chrome.runtime.sendMessage({ type: "get-state" });
-  enabled = cfg.enabled;
+  else setBridgeBusy(false);
+  // the background worker auto-toggles the proxy on start/stop
+  const fresh = await chrome.runtime.sendMessage({ type: "get-state" });
+  cfg = { ...cfg, ...fresh };
   render();
-  setTimeout(showPublicIP, 300);
+  setTimeout(updateHero, 300);
 });
 
-load();
-loadBridge();
+// ---- init -----------------------------------------------------------------
+
+async function init() {
+  const stored = await chrome.runtime.sendMessage({ type: "get-state" });
+  cfg = { ...cfg, ...stored };
+  hostInput.value = cfg.host;
+  portInput.value = cfg.port;
+  sitesInput.value = (cfg.sites || []).join("\n");
+  render();
+  updateHero();
+  loadBridge();
+}
+
+init();

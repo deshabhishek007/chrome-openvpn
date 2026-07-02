@@ -3,73 +3,144 @@
 <head>
   <meta charset="utf-8" />
   <style>
+    :root {
+      --bg: #0d1117;
+      --card: #161b22;
+      --border: #30363d;
+      --text: #e6edf3;
+      --muted: #8b949e;
+      --green: #3fb950;
+      --green-dim: #12261a;
+      --red: #f85149;
+      --red-dim: #2d1516;
+      --blue: #388bfd;
+    }
     body {
       font-family: -apple-system, system-ui, sans-serif;
-      width: 300px;
+      width: 320px;
       margin: 0;
-      padding: 16px;
-      background: #0d1117;
-      color: #e6edf3;
+      padding: 14px;
+      background: var(--bg);
+      color: var(--text);
+      user-select: none;
     }
     h1 {
-      font-size: 14px;
-      margin: 0 0 12px;
+      font-size: 13px;
+      font-weight: 600;
+      letter-spacing: 0.3px;
+      margin: 0 0 10px;
+      color: var(--muted);
+    }
+
+    /* hero status card */
+    #hero {
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      padding: 14px;
+      margin-bottom: 12px;
+      background: var(--card);
+      transition: background 0.25s, border-color 0.25s;
+    }
+    #hero.on { background: var(--green-dim); border-color: #1f5c33; }
+    #hero.err { background: var(--red-dim); border-color: #6e2426; }
+    #heroState {
+      font-size: 16px;
+      font-weight: 700;
       display: flex;
       align-items: center;
       gap: 8px;
     }
-    .dot {
-      width: 10px;
-      height: 10px;
-      border-radius: 50%;
-      background: #6e7681;
-      flex-shrink: 0;
+    #heroState .dot {
+      width: 10px; height: 10px; border-radius: 50%;
+      background: var(--muted); flex-shrink: 0;
     }
-    .dot.on { background: #3fb950; }
-    .dot.err { background: #f85149; }
-    button {
-      width: 100%;
-      padding: 10px;
-      font-size: 14px;
-      font-weight: 600;
-      border: none;
-      border-radius: 8px;
-      cursor: pointer;
-      background: #238636;
-      color: #fff;
+    #hero.on #heroState .dot { background: var(--green); box-shadow: 0 0 8px var(--green); }
+    #hero.err #heroState .dot { background: var(--red); }
+    #heroIp {
+      font-size: 12px;
+      color: var(--muted);
+      margin-top: 6px;
+      min-height: 15px;
     }
-    button.on { background: #b62324; }
-    button:disabled { opacity: 0.6; cursor: wait; }
-    .row {
-      display: flex;
-      gap: 8px;
-      margin: 12px 0;
+    #heroIp b { color: var(--text); font-weight: 600; }
+
+    .section {
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      padding: 10px 12px;
+      margin-bottom: 10px;
     }
-    label {
-      font-size: 11px;
-      color: #8b949e;
-      display: block;
-      margin-bottom: 3px;
+    .label {
+      font-size: 10px;
+      font-weight: 700;
+      letter-spacing: 0.8px;
+      text-transform: uppercase;
+      color: var(--muted);
+      margin-bottom: 8px;
     }
-    input, textarea {
-      width: 100%;
+    .row { display: flex; gap: 8px; align-items: center; }
+
+    select, input, textarea {
       box-sizing: border-box;
-      padding: 6px 8px;
-      border: 1px solid #30363d;
-      border-radius: 6px;
-      background: #161b22;
-      color: #e6edf3;
+      padding: 7px 9px;
+      border: 1px solid var(--border);
+      border-radius: 7px;
+      background: var(--card);
+      color: var(--text);
       font-size: 13px;
       font-family: inherit;
+      width: 100%;
     }
-    .host { flex: 2; }
-    .port { flex: 1; }
+    select { flex: 1; cursor: pointer; }
+    textarea { height: 64px; resize: vertical; margin-top: 8px; user-select: text; }
+
+    button {
+      border: none;
+      border-radius: 7px;
+      cursor: pointer;
+      font-weight: 600;
+      font-size: 12px;
+      padding: 8px 14px;
+      background: #238636;
+      color: #fff;
+      flex-shrink: 0;
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      justify-content: center;
+    }
+    button:disabled { opacity: 0.55; cursor: default; }
+    button.stop { background: #b62324; }
+    button.ghost {
+      background: transparent;
+      border: 1px dashed var(--border);
+      color: var(--muted);
+      width: 100%;
+      margin-top: 8px;
+      padding: 6px;
+    }
+    button.ghost:hover:not(:disabled) { color: var(--text); border-color: var(--muted); }
+
+    .spinner {
+      width: 11px; height: 11px;
+      border: 2px solid rgba(255,255,255,0.35);
+      border-top-color: #fff;
+      border-radius: 50%;
+      animation: spin 0.7s linear infinite;
+      display: none;
+    }
+    .busy .spinner { display: inline-block; }
+    @keyframes spin { to { transform: rotate(360deg); } }
+
+    .hint { font-size: 11px; color: var(--muted); margin-top: 8px; line-height: 1.5; min-height: 14px; }
+    .hint b { color: var(--text); }
+
+    /* segmented mode control */
     .modes {
       display: flex;
-      gap: 4px;
-      margin: 12px 0;
-      background: #161b22;
-      border: 1px solid #30363d;
+      gap: 3px;
+      background: var(--card);
+      border: 1px solid var(--border);
       border-radius: 8px;
       padding: 3px;
     }
@@ -79,96 +150,112 @@
       font-size: 12px;
       font-weight: 500;
       background: transparent;
-      color: #8b949e;
-      border-radius: 6px;
+      color: var(--muted);
     }
-    .modes button.active {
-      background: #30363d;
-      color: #e6edf3;
-    }
-    #sitesWrap { margin: 0 0 12px; display: none; }
+    .modes button.active { background: var(--border); color: var(--text); }
+    #sitesWrap { display: none; }
     #sitesWrap.visible { display: block; }
-    textarea {
-      height: 72px;
-      resize: vertical;
+
+    /* main switch */
+    .switchRow {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      padding: 12px;
+      margin-bottom: 10px;
     }
-    #status {
-      margin-top: 12px;
-      font-size: 12px;
-      color: #8b949e;
-      line-height: 1.5;
-      min-height: 32px;
+    .switchTitle { font-size: 14px; font-weight: 600; }
+    .switchSub { font-size: 11px; color: var(--muted); margin-top: 2px; }
+    .switch { position: relative; width: 44px; height: 25px; flex-shrink: 0; }
+    .switch input { opacity: 0; width: 0; height: 0; }
+    .slider {
+      position: absolute; inset: 0;
+      background: var(--border);
+      border-radius: 25px;
+      transition: 0.2s;
+      cursor: pointer;
     }
-    #status b { color: #e6edf3; }
-    .bridge {
-      border: 1px solid #30363d;
-      border-radius: 8px;
-      padding: 10px;
-      margin-bottom: 12px;
+    .slider:before {
+      content: "";
+      position: absolute;
+      width: 19px; height: 19px;
+      left: 3px; top: 3px;
+      background: #fff;
+      border-radius: 50%;
+      transition: 0.2s;
     }
-    .bridge .row { margin: 6px 0 0; }
-    select {
-      flex: 1;
-      box-sizing: border-box;
-      padding: 6px 8px;
-      border: 1px solid #30363d;
-      border-radius: 6px;
-      background: #161b22;
-      color: #e6edf3;
-      font-size: 13px;
-    }
-    .mini {
-      width: auto;
-      flex: 0 0 auto;
-      padding: 6px 14px;
-      font-size: 12px;
-    }
-    .mini.stop { background: #b62324; }
-    #bridgeStatus {
+    .switch input:checked + .slider { background: var(--green); }
+    .switch input:checked + .slider:before { transform: translateX(19px); }
+    .switch input:disabled + .slider { opacity: 0.5; cursor: default; }
+
+    details { margin-top: 2px; }
+    summary {
       font-size: 11px;
-      color: #8b949e;
-      margin-top: 8px;
-      line-height: 1.5;
+      color: var(--muted);
+      cursor: pointer;
+      outline: none;
+      padding: 2px 0;
     }
-    #bridgeStatus b { color: #e6edf3; }
+    details .row { margin-top: 8px; }
+    details label { font-size: 10px; color: var(--muted); display: block; margin-bottom: 3px; }
+    .host { flex: 2; } .port { flex: 1; }
   </style>
 </head>
 <body>
-  <h1><span id="dot" class="dot"></span> OpenVPN Bridge</h1>
+  <h1>OPENVPN BRIDGE</h1>
 
-  <div class="bridge">
-    <label>VPN tunnel (local bridge)</label>
+  <div id="hero">
+    <div id="heroState"><span class="dot"></span><span id="heroText">Checking…</span></div>
+    <div id="heroIp"></div>
+  </div>
+
+  <div class="section">
+    <div class="label">VPN tunnel</div>
     <div class="row">
       <select id="profileSel"></select>
-      <button id="bridgeBtn" class="mini" disabled>Start</button>
+      <button id="bridgeBtn" disabled><span class="spinner"></span><span id="bridgeBtnText">Start</span></button>
     </div>
-    <div id="bridgeStatus">Checking bridge…</div>
+    <div class="hint" id="bridgeStatus">Checking bridge…</div>
   </div>
 
-  <div class="row">
-    <div class="host">
-      <label for="host">Proxy host</label>
-      <input id="host" value="127.0.0.1" />
+  <div class="section">
+    <div class="label">Routing</div>
+    <div class="modes">
+      <button id="modeAll" type="button">All traffic</button>
+      <button id="modeSites" type="button">Only these sites</button>
     </div>
-    <div class="port">
-      <label for="port">Port</label>
-      <input id="port" value="1080" type="number" />
+    <div id="sitesWrap">
+      <textarea id="sites" placeholder="example.com&#10;blocked-site.net" spellcheck="false"></textarea>
+      <button id="addSite" class="ghost" type="button">+ Add current site</button>
     </div>
   </div>
 
-  <div class="modes">
-    <button id="modeAll" type="button">All Chrome traffic</button>
-    <button id="modeSites" type="button">Only these sites</button>
+  <div class="switchRow">
+    <div>
+      <div class="switchTitle">Route Chrome via VPN</div>
+      <div class="switchSub" id="switchSub">All Chrome traffic</div>
+    </div>
+    <label class="switch">
+      <input type="checkbox" id="toggle" />
+      <span class="slider"></span>
+    </label>
   </div>
 
-  <div id="sitesWrap">
-    <label for="sites">Domains via VPN (one per line, subdomains included)</label>
-    <textarea id="sites" placeholder="example.com&#10;blocked-site.net"></textarea>
-  </div>
-
-  <button id="toggle">Connect Chrome to VPN</button>
-
-  <div id="status"></div>
+  <details>
+    <summary>Advanced</summary>
+    <div class="row">
+      <div class="host">
+        <label for="host">Proxy host</label>
+        <input id="host" value="127.0.0.1" />
+      </div>
+      <div class="port">
+        <label for="port">Port</label>
+        <input id="port" value="1080" type="number" />
+      </div>
+    </div>
+  </details>
 
   <script src="popup.js"></script>
 </body>
