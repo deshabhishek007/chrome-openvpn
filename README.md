@@ -1,90 +1,119 @@
 # OpenVPN Bridge for Chrome
 
-Route **only Chrome's traffic** through your OpenVPN server. The rest of
-your Mac stays on the normal connection.
+Route **only Chrome's traffic** through your OpenVPN server — everything
+else on your Mac (SSH, terminals, other apps) stays on your normal
+internet connection.
 
-## Why this design?
+**The problem this solves:** a normal OpenVPN client (OpenVPN Connect,
+Tunnelblick) tunnels your *entire machine*. If you only need the VPN for
+a few websites, that's overkill — and it often breaks things like SSH
+sessions, local dev tools, or video calls. This project gives Chrome its
+own private path into the VPN and leaves the rest of the system alone.
 
-A Chrome extension cannot speak the OpenVPN protocol — the extension API
-(`chrome.proxy`) can only point the browser at an HTTP/SOCKS proxy. So this
-project has two halves:
+> **Platform:** macOS (Apple Silicon or Intel). Chrome or any Chromium
+> browser for the extension.
+
+## How it works
+
+A Chrome extension alone cannot speak the OpenVPN protocol — extensions
+can only point the browser at a proxy. So this project has two halves:
 
 ```
-Chrome ──(extension sets SOCKS5 proxy)──▶ 127.0.0.1:1080 (gost)
-                                              │ outbound bound to utunX
+Chrome ──(extension sets SOCKS5 proxy)──▶ 127.0.0.1:1080 (gost proxy)
+                                              │ outbound bound to the
+                                              │ VPN's tun interface
                                               ▼
                                         OpenVPN tunnel ──▶ your VPN server
 ```
 
-- **`vpn-bridge.sh`** starts OpenVPN with `--route-nopull`, so the tunnel
-  comes up but the system routing table is untouched — no other app uses
-  it. Then it starts `gost`, a SOCKS5 proxy on `127.0.0.1:1080` whose
-  outbound connections are bound to the VPN's tun interface.
-- **`extension/`** is a Chrome extension with a toggle and two modes:
-  - **All Chrome traffic** — everything in Chrome goes via the VPN.
-  - **Only these sites** — just the domains you list (plus their
-    subdomains) go via the VPN; the rest of Chrome stays direct. Use
-    this when only a few sites are blocked without the VPN.
+- **`vpn-bridge.sh`** starts OpenVPN with `--route-nopull`, so the
+  tunnel comes up **without touching the system routing table** — no
+  other app even knows it exists. It then starts [gost](https://github.com/go-gost/gost),
+  a small SOCKS5 proxy on `127.0.0.1:1080` whose outbound connections
+  are pinned to the VPN's tun interface.
+- **`extension/`** is a Chrome extension (Manifest V3) that toggles
+  Chrome between "direct" and that local proxy — for all traffic, or
+  only for a list of domains you choose.
 
-Because the system routing table is never modified, SSH, terminals, and
-every other app keep using your normal connection — the "SSH breaks when
-the VPN is on" problem goes away. Just make sure the **OpenVPN Connect
-app stays disconnected** while using the bridge; if it connects, it
-tunnels the whole system again.
+DNS lookups for proxied traffic are resolved over encrypted
+DNS-over-HTTPS (Cloudflare `1.1.1.1`), so ISP-level DNS blocking can't
+interfere and your ISP's resolver never sees them.
 
-## One-time setup
+## Beginner's guide
 
-1. Install the tools (already done if Claude set this up for you):
+### What you need
 
-   ```sh
-   brew install openvpn gost
-   ```
+- A Mac with [Homebrew](https://brew.sh) installed
+- Google Chrome (or Brave/Edge/another Chromium browser)
+- An OpenVPN profile — a `.ovpn` file from your VPN provider or your
+  own OpenVPN server
 
-2. Export your `.ovpn` profile from your VPN provider and drop it into
-   `profiles/`. (OpenVPN Connect doesn't let you export imported profiles —
-   download the original `.ovpn` from your provider's dashboard instead.)
-
-   If your server needs a username/password, create `profiles/auth.txt`:
-
-   ```
-   your-username
-   your-password
-   ```
-
-3. Load the extension in Chrome:
-   - Open `chrome://extensions`
-   - Enable **Developer mode** (top right)
-   - Click **Load unpacked** and select the `extension/` folder
-
-## Daily use
+### Step 1 — Get the code and tools
 
 ```sh
-./vpn-bridge.sh              # one profile: uses it; several: shows a menu
-./vpn-bridge.sh eu           # partial name match, e.g. hos-vpn-eu.ovpn
-./vpn-bridge.sh ~/Downloads/myserver.ovpn   # explicit path
+git clone https://github.com/deshabhishek007/chrome-openvpn.git
+cd chrome-openvpn
+brew install openvpn gost
 ```
 
-With several `.ovpn` files in `profiles/`, the no-argument form lists
-them with their server addresses and asks you to pick a number. To
-switch servers, Ctrl-C the running bridge and start it again with a
-different choice — Chrome's toggle can stay ON the whole time.
+### Step 2 — Add your VPN profile
 
-It asks for `sudo` (creating a tun interface requires root), waits for the
-tunnel, then starts the proxy. Leave it running.
+Copy your `.ovpn` file(s) into the `profiles/` folder:
 
-Then click the **OpenVPN Bridge** icon in Chrome, pick a mode
-(**All Chrome traffic**, or **Only these sites** with your list of
-VPN-required domains), and hit connect. In all-traffic mode the popup
-shows Chrome's public IP so you can confirm it changed. Toggle off (or
-just stop the script with Ctrl-C) to go back to direct.
+```sh
+cp ~/Downloads/my-server.ovpn profiles/
+```
 
-## Optional: start/stop the VPN from the extension itself
+If your VPN needs a username and password, create `profiles/auth.txt`
+with the username on line 1 and the password on line 2.
 
-Instead of running `./vpn-bridge.sh` in a terminal, the popup can manage
-the tunnel directly — pick a profile from a dropdown, press **Start**,
-and the proxy toggle flips on automatically (Stop reverses both).
+> **Tip:** if your profile is already imported into the OpenVPN Connect
+> app and you can't find the original file, the app keeps copies in
+> `~/Library/Application Support/OpenVPN Connect/profiles/` — you can
+> copy them from there and rename them to something memorable.
+>
+> The `profiles/` folder is listed in `.gitignore`, so your VPN
+> credentials can never be accidentally committed or pushed.
 
-One-time setup (after loading the extension):
+### Step 3 — Load the extension in Chrome
+
+1. Open `chrome://extensions` in Chrome
+2. Turn on **Developer mode** (toggle in the top-right corner)
+3. Click **Load unpacked** and select this project's `extension/` folder
+
+### Step 4 — Start the bridge
+
+```sh
+./vpn-bridge.sh
+```
+
+- It asks for your Mac password once (creating a network tunnel
+  requires admin rights).
+- With one profile it connects straight away; with several it shows a
+  numbered menu. You can also pass a name: `./vpn-bridge.sh eu` matches
+  `my-vpn-eu.ovpn`.
+- Leave the terminal window running. Ctrl-C disconnects everything.
+
+### Step 5 — Turn it on in Chrome
+
+Click the **OpenVPN Bridge** icon in Chrome's toolbar:
+
+- **All Chrome traffic** — every site you open in Chrome goes through
+  the VPN.
+- **Only these sites** — list just the domains that need the VPN (one
+  per line, subdomains included); everything else stays direct and
+  fast.
+
+Hit **Connect** — the popup shows Chrome's public IP so you can confirm
+it changed. Meanwhile, `ssh`, `curl`, and every other app on your Mac
+still use your normal connection. That's the whole point!
+
+## Optional: control everything from the popup
+
+Instead of keeping a terminal open, the popup can start and stop the
+tunnel itself — pick a profile from the dropdown, press **Start**, and
+the proxy toggle flips on automatically. One-time setup (after loading
+the extension):
 
 ```sh
 ./host/install.sh
@@ -93,17 +122,20 @@ One-time setup (after loading the extension):
 This wires up three things:
 
 1. A **native messaging host** manifest, so Chrome is allowed to launch
-   `host/vpn-bridge-host.py` and exchange messages with it — this is
-   Chrome's sanctioned mechanism for extensions to talk to local
-   programs; the manifest is locked to this extension's ID.
+   `host/vpn-bridge-host.py` — this is Chrome's sanctioned mechanism
+   for extensions to talk to local programs, locked to this extension's
+   ID.
 2. A **root helper** at `/usr/local/libexec/vpn-bridge-helper`
-   (root-owned, read-only) that does only the privileged parts: start
-   openvpn with `--route-nopull` + `--script-security 1`, add/remove the
-   interface-scoped route, stop the tunnel. Profiles are referenced by
-   name only and resolved inside this project's `profiles/` dir.
+   (root-owned, read-only) that does only the privileged parts:
+   start openvpn with `--route-nopull` + `--script-security 1`,
+   add/remove the interface-scoped route, stop the tunnel. Profiles are
+   referenced by name only and resolved inside this project's
+   `profiles/` folder.
 3. A **sudoers rule** (`/etc/sudoers.d/vpn-bridge`) allowing your user
    to run exactly that one helper without a password — nothing else
    gains passwordless sudo.
+
+Then reload the extension once (`chrome://extensions` → reload icon).
 
 To undo it all:
 
@@ -112,20 +144,45 @@ sudo rm /etc/sudoers.d/vpn-bridge /usr/local/libexec/vpn-bridge-helper
 rm ~/Library/Application\ Support/Google/Chrome/NativeMessagingHosts/com.vpnbridge.host.json
 ```
 
-The terminal script keeps working either way; they control the same
+The terminal script keeps working either way; both control the same
 tunnel and proxy.
+
+## Troubleshooting
+
+**The popup says "Could not reach the internet through the proxy."**
+The bridge isn't running (or died). Start `./vpn-bridge.sh`, or press
+Start in the popup if you installed the optional control.
+
+**`bind: address already in use` on startup.**
+Something else holds port 1080. The script cleans up its own leftovers
+automatically; if another app owns the port, run on a different one:
+`PORT=1081 ./vpn-bridge.sh` and change the port in the popup to match.
+
+**The tunnel comes up but sites time out.**
+Check `/tmp/openvpn-bridge.log`. If the log looks healthy, your VPN
+server may not allow forwarding to the destination. Test with:
+`curl --socks5-hostname 127.0.0.1:1080 https://api.ipify.org` — it
+should print the VPN server's IP.
+
+**"tunnel did not come up in 45s".**
+Usually wrong credentials (check `profiles/auth.txt`), a blocked UDP
+port, or the server being down. The last log lines are printed with the
+error.
+
+**I use a full VPN app too (OpenVPN Connect, Tunnelblick, ...).**
+Keep it disconnected while the bridge runs. If it connects, it captures
+the whole system — including Chrome — and the "only Chrome" behavior is
+gone until you disconnect it.
 
 ## Notes & limitations
 
-- **Only Chrome is affected.** The proxy setting applies to the whole
-  Chrome profile (all tabs/windows of that profile), not other apps.
-- **DNS:** Chrome sends hostnames to the SOCKS5 proxy, and `gost`
-  resolves them over encrypted DNS-over-HTTPS (Cloudflare `1.1.1.1`).
-  ISP-level DNS blocking therefore can't stop the VPN-routed sites from
-  resolving, and your ISP's resolver never sees those lookups.
-- **localhost is bypassed** by the extension, so local dev servers keep
-  working while the VPN is on.
-- If the bridge isn't running but the extension is toggled ON, Chrome has
-  no route to the internet — the popup will tell you to start
-  `./vpn-bridge.sh`.
+- macOS only. The interface-scoped routing trick (`route -ifscope`) is
+  macOS-specific; a Linux port would use network namespaces instead.
+- The proxy setting applies to the whole Chrome profile (all tabs and
+  windows), not other browsers or apps.
+- `localhost` is always bypassed, so local dev servers keep working.
 - Keep `.ovpn` files and `auth.txt` private; they contain credentials.
+
+## License
+
+[MIT](LICENSE)
