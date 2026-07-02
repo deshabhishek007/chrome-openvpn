@@ -78,6 +78,43 @@ VPN-required domains), and hit connect. In all-traffic mode the popup
 shows Chrome's public IP so you can confirm it changed. Toggle off (or
 just stop the script with Ctrl-C) to go back to direct.
 
+## Optional: start/stop the VPN from the extension itself
+
+Instead of running `./vpn-bridge.sh` in a terminal, the popup can manage
+the tunnel directly — pick a profile from a dropdown, press **Start**,
+and the proxy toggle flips on automatically (Stop reverses both).
+
+One-time setup (after loading the extension):
+
+```sh
+./host/install.sh
+```
+
+This wires up three things:
+
+1. A **native messaging host** manifest, so Chrome is allowed to launch
+   `host/vpn-bridge-host.py` and exchange messages with it — this is
+   Chrome's sanctioned mechanism for extensions to talk to local
+   programs; the manifest is locked to this extension's ID.
+2. A **root helper** at `/usr/local/libexec/vpn-bridge-helper`
+   (root-owned, read-only) that does only the privileged parts: start
+   openvpn with `--route-nopull` + `--script-security 1`, add/remove the
+   interface-scoped route, stop the tunnel. Profiles are referenced by
+   name only and resolved inside this project's `profiles/` dir.
+3. A **sudoers rule** (`/etc/sudoers.d/vpn-bridge`) allowing your user
+   to run exactly that one helper without a password — nothing else
+   gains passwordless sudo.
+
+To undo it all:
+
+```sh
+sudo rm /etc/sudoers.d/vpn-bridge /usr/local/libexec/vpn-bridge-helper
+rm ~/Library/Application\ Support/Google/Chrome/NativeMessagingHosts/com.vpnbridge.host.json
+```
+
+The terminal script keeps working either way; they control the same
+tunnel and proxy.
+
 ## Notes & limitations
 
 - **Only Chrome is affected.** The proxy setting applies to the whole

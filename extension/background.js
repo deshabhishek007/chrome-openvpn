@@ -67,9 +67,42 @@ async function restore() {
 chrome.runtime.onStartup.addListener(restore);
 chrome.runtime.onInstalled.addListener(restore);
 
+// Relay bridge commands to the local native messaging host. Doing this
+// in the service worker (not the popup) means a slow "start" keeps
+// running even if the popup closes.
+const NATIVE_HOST = "com.vpnbridge.host";
+
+async function bridgeCall(payload) {
+  try {
+    return await chrome.runtime.sendNativeMessage(NATIVE_HOST, payload);
+  } catch (e) {
+    return {
+      ok: false,
+      notInstalled: true,
+      error:
+        "Bridge control not installed — run host/install.sh once " +
+        "(see README). " + (e.message || ""),
+    };
+  }
+}
+
 chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
   (async () => {
-    if (msg.type === "set-state") {
+    if (msg.type === "bridge") {
+      const res = await bridgeCall(msg.payload);
+      // After a successful start, turn the Chrome proxy on automatically
+      // (and off after a stop) so one click does the whole job.
+      if (res.ok && msg.payload.cmd === "start") {
+        const cfg = await getConfig();
+        await chrome.storage.local.set({ enabled: true });
+        await applyState({ ...cfg, enabled: true });
+      } else if (res.ok && msg.payload.cmd === "stop") {
+        const cfg = await getConfig();
+        await chrome.storage.local.set({ enabled: false });
+        await applyState({ ...cfg, enabled: false });
+      }
+      sendResponse(res);
+    } else if (msg.type === "set-state") {
       const cfg = {
         enabled: msg.enabled,
         host: msg.host || DEFAULTS.host,

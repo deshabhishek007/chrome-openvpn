@@ -1,4 +1,7 @@
 const dot = document.getElementById("dot");
+const profileSel = document.getElementById("profileSel");
+const bridgeBtn = document.getElementById("bridgeBtn");
+const bridgeStatus = document.getElementById("bridgeStatus");
 const toggle = document.getElementById("toggle");
 const hostInput = document.getElementById("host");
 const portInput = document.getElementById("port");
@@ -112,4 +115,79 @@ toggle.addEventListener("click", async () => {
   setTimeout(showPublicIP, 300);
 });
 
+// --- local bridge (tunnel) controls via native messaging ---------------
+
+let bridgeRunning = false;
+
+function bridge(payload) {
+  return chrome.runtime.sendMessage({ type: "bridge", payload });
+}
+
+function renderBridge(st) {
+  bridgeRunning = Boolean(st && st.running);
+  bridgeBtn.textContent = bridgeRunning ? "Stop" : "Start";
+  bridgeBtn.classList.toggle("stop", bridgeRunning);
+  bridgeBtn.disabled = false;
+  profileSel.disabled = bridgeRunning;
+  if (bridgeRunning) {
+    bridgeStatus.innerHTML = `Tunnel <b>up</b>: ${st.profile || "?"} (${st.iface})`;
+    if (st.profile) profileSel.value = st.profile;
+  } else if (st && st.tunnel && !st.proxy) {
+    bridgeStatus.innerHTML = "Tunnel up but proxy down — press Start to repair.";
+  } else {
+    bridgeStatus.innerHTML = "Tunnel <b>down</b>.";
+  }
+}
+
+async function loadBridge() {
+  const [list, st] = await Promise.all([
+    bridge({ cmd: "list" }),
+    bridge({ cmd: "status" }),
+  ]);
+  if (!list.ok || list.notInstalled || !st.ok) {
+    bridgeStatus.textContent =
+      (list.error || st.error || "Bridge control unavailable.");
+    bridgeBtn.disabled = true;
+    profileSel.disabled = true;
+    return;
+  }
+  profileSel.innerHTML = "";
+  for (const p of list.profiles) {
+    const opt = document.createElement("option");
+    opt.value = p.name;
+    opt.textContent = p.server ? `${p.name} (${p.server})` : p.name;
+    profileSel.appendChild(opt);
+  }
+  if (list.profiles.length === 0) {
+    bridgeStatus.textContent = "No .ovpn profiles found in profiles/.";
+    bridgeBtn.disabled = true;
+    return;
+  }
+  renderBridge(st);
+}
+
+bridgeBtn.addEventListener("click", async () => {
+  bridgeBtn.disabled = true;
+  profileSel.disabled = true;
+  if (bridgeRunning) {
+    bridgeStatus.textContent = "Stopping tunnel…";
+    const res = await bridge({ cmd: "stop" });
+    if (!res.ok) bridgeStatus.textContent = res.error;
+  } else {
+    bridgeStatus.textContent =
+      "Starting tunnel… (takes a few seconds; keep this open)";
+    const res = await bridge({ cmd: "start", profile: profileSel.value });
+    if (!res.ok) bridgeStatus.textContent = res.error;
+  }
+  const st = await bridge({ cmd: "status" });
+  if (st.ok) renderBridge(st);
+  else bridgeBtn.disabled = false;
+  // proxy state may have been auto-toggled by the background worker
+  const cfg = await chrome.runtime.sendMessage({ type: "get-state" });
+  enabled = cfg.enabled;
+  render();
+  setTimeout(showPublicIP, 300);
+});
+
 load();
+loadBridge();

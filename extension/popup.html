@@ -100,10 +100,50 @@
       min-height: 32px;
     }
     #status b { color: #e6edf3; }
+    .bridge {
+      border: 1px solid #30363d;
+      border-radius: 8px;
+      padding: 10px;
+      margin-bottom: 12px;
+    }
+    .bridge .row { margin: 6px 0 0; }
+    select {
+      flex: 1;
+      box-sizing: border-box;
+      padding: 6px 8px;
+      border: 1px solid #30363d;
+      border-radius: 6px;
+      background: #161b22;
+      color: #e6edf3;
+      font-size: 13px;
+    }
+    .mini {
+      width: auto;
+      flex: 0 0 auto;
+      padding: 6px 14px;
+      font-size: 12px;
+    }
+    .mini.stop { background: #b62324; }
+    #bridgeStatus {
+      font-size: 11px;
+      color: #8b949e;
+      margin-top: 8px;
+      line-height: 1.5;
+    }
+    #bridgeStatus b { color: #e6edf3; }
   </style>
 </head>
 <body>
   <h1><span id="dot" class="dot"></span> OpenVPN Bridge</h1>
+
+  <div class="bridge">
+    <label>VPN tunnel (local bridge)</label>
+    <div class="row">
+      <select id="profileSel"></select>
+      <button id="bridgeBtn" class="mini" disabled>Start</button>
+    </div>
+    <div id="bridgeStatus">Checking bridge…</div>
+  </div>
 
   <div class="row">
     <div class="host">
