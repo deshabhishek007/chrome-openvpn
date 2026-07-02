@@ -37,6 +37,25 @@ if [[ -z "$GOST_BIN" ]]; then
   exit 1
 fi
 
+# --- make sure the proxy port is free ---------------------------------
+STALE_PID="$(lsof -ti "tcp:${PORT}" -sTCP:LISTEN 2>/dev/null || true)"
+if [[ -n "$STALE_PID" ]]; then
+  if ps -o comm= -p "$STALE_PID" 2>/dev/null | grep -qi gost; then
+    echo "==> Cleaning up stale proxy from a previous session (pid $STALE_PID)"
+    kill "$STALE_PID" 2>/dev/null || true
+    sleep 1
+    if lsof -ti "tcp:${PORT}" -sTCP:LISTEN >/dev/null 2>&1; then
+      kill -9 "$STALE_PID" 2>/dev/null || true
+      sleep 1
+    fi
+  else
+    echo "error: port $PORT is already in use by another process:" >&2
+    lsof -i "tcp:${PORT}" -sTCP:LISTEN >&2
+    echo "Stop it, or run with a different port: PORT=1081 $0" >&2
+    exit 1
+  fi
+fi
+
 # --- locate the .ovpn profile ----------------------------------------
 CONFIG="${1:-}"
 if [[ -z "$CONFIG" ]]; then
@@ -69,11 +88,22 @@ cleanup() {
   echo "==> Tunnel closed. Chrome (if still toggled ON) has no proxy to"
   echo "    reach — remember to toggle the extension OFF."
 }
-trap cleanup EXIT INT TERM
+trap cleanup EXIT INT TERM HUP
 
 # --- start openvpn, isolated from system routing ----------------------
 echo "==> Starting OpenVPN (system routes will NOT be changed)..."
 echo "    sudo is needed to create the tun interface."
+
+# Kill any tunnel left over from a previous session (e.g. a closed
+# terminal tab). The --route-nopull pattern only matches tunnels started
+# by this script, never OpenVPN Connect's own processes.
+STALE_OVPN="$(pgrep -f -- "--route-nopull" || true)"
+if [[ -n "$STALE_OVPN" ]]; then
+  echo "==> Cleaning up stale OpenVPN from a previous session (pid $STALE_OVPN)"
+  sudo kill $STALE_OVPN 2>/dev/null || true
+  sleep 1
+fi
+
 sudo rm -f "$LOG" "$PIDFILE"
 sudo "$OPENVPN_BIN" \
   --config "$CONFIG" \
