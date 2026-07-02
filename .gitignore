@@ -1,0 +1,6 @@
+# VPN profiles and credentials must never be committed
+profiles/*
+!profiles/.gitkeep
+
+# macOS
+.DS_Store

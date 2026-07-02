@@ -1,0 +1,135 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8" />
+  <style>
+    body {
+      font-family: -apple-system, system-ui, sans-serif;
+      width: 300px;
+      margin: 0;
+      padding: 16px;
+      background: #0d1117;
+      color: #e6edf3;
+    }
+    h1 {
+      font-size: 14px;
+      margin: 0 0 12px;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+    .dot {
+      width: 10px;
+      height: 10px;
+      border-radius: 50%;
+      background: #6e7681;
+      flex-shrink: 0;
+    }
+    .dot.on { background: #3fb950; }
+    .dot.err { background: #f85149; }
+    button {
+      width: 100%;
+      padding: 10px;
+      font-size: 14px;
+      font-weight: 600;
+      border: none;
+      border-radius: 8px;
+      cursor: pointer;
+      background: #238636;
+      color: #fff;
+    }
+    button.on { background: #b62324; }
+    button:disabled { opacity: 0.6; cursor: wait; }
+    .row {
+      display: flex;
+      gap: 8px;
+      margin: 12px 0;
+    }
+    label {
+      font-size: 11px;
+      color: #8b949e;
+      display: block;
+      margin-bottom: 3px;
+    }
+    input, textarea {
+      width: 100%;
+      box-sizing: border-box;
+      padding: 6px 8px;
+      border: 1px solid #30363d;
+      border-radius: 6px;
+      background: #161b22;
+      color: #e6edf3;
+      font-size: 13px;
+      font-family: inherit;
+    }
+    .host { flex: 2; }
+    .port { flex: 1; }
+    .modes {
+      display: flex;
+      gap: 4px;
+      margin: 12px 0;
+      background: #161b22;
+      border: 1px solid #30363d;
+      border-radius: 8px;
+      padding: 3px;
+    }
+    .modes button {
+      flex: 1;
+      padding: 6px;
+      font-size: 12px;
+      font-weight: 500;
+      background: transparent;
+      color: #8b949e;
+      border-radius: 6px;
+    }
+    .modes button.active {
+      background: #30363d;
+      color: #e6edf3;
+    }
+    #sitesWrap { margin: 0 0 12px; display: none; }
+    #sitesWrap.visible { display: block; }
+    textarea {
+      height: 72px;
+      resize: vertical;
+    }
+    #status {
+      margin-top: 12px;
+      font-size: 12px;
+      color: #8b949e;
+      line-height: 1.5;
+      min-height: 32px;
+    }
+    #status b { color: #e6edf3; }
+  </style>
+</head>
+<body>
+  <h1><span id="dot" class="dot"></span> OpenVPN Bridge</h1>
+
+  <div class="row">
+    <div class="host">
+      <label for="host">Proxy host</label>
+      <input id="host" value="127.0.0.1" />
+    </div>
+    <div class="port">
+      <label for="port">Port</label>
+      <input id="port" value="1080" type="number" />
+    </div>
+  </div>
+
+  <div class="modes">
+    <button id="modeAll" type="button">All Chrome traffic</button>
+    <button id="modeSites" type="button">Only these sites</button>
+  </div>
+
+  <div id="sitesWrap">
+    <label for="sites">Domains via VPN (one per line, subdomains included)</label>
+    <textarea id="sites" placeholder="example.com&#10;blocked-site.net"></textarea>
+  </div>
+
+  <button id="toggle">Connect Chrome to VPN</button>
+
+  <div id="status"></div>
+
+  <script src="popup.js"></script>
+</body>
+</html>
