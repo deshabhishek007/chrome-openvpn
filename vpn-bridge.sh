@@ -37,34 +37,51 @@ if [[ -z "$GOST_BIN" ]]; then
   exit 1
 fi
 
-# --- make sure the proxy port is free ---------------------------------
-STALE_PID="$(lsof -ti "tcp:${PORT}" -sTCP:LISTEN 2>/dev/null || true)"
-if [[ -n "$STALE_PID" ]]; then
-  if ps -o comm= -p "$STALE_PID" 2>/dev/null | grep -qi gost; then
-    echo "==> Cleaning up stale proxy from a previous session (pid $STALE_PID)"
-    kill "$STALE_PID" 2>/dev/null || true
-    sleep 1
-    if lsof -ti "tcp:${PORT}" -sTCP:LISTEN >/dev/null 2>&1; then
-      kill -9 "$STALE_PID" 2>/dev/null || true
-      sleep 1
-    fi
-  else
-    echo "error: port $PORT is already in use by another process:" >&2
-    lsof -i "tcp:${PORT}" -sTCP:LISTEN >&2
-    echo "Stop it, or run with a different port: PORT=1081 $0" >&2
+# --- locate the .ovpn profile ----------------------------------------
+# Accepts: a path to a .ovpn file, a (partial) profile name from
+# ./profiles (e.g. "eu" matches hos-vpn-eu.ovpn), or nothing — in which
+# case a menu is shown when more than one profile exists.
+PROFILES=()
+while IFS= read -r f; do PROFILES+=("$f"); done \
+  < <(ls "$DIR"/profiles/*.ovpn 2>/dev/null || true)
+
+CONFIG="${1:-}"
+if [[ -n "$CONFIG" && ! -f "$CONFIG" ]]; then
+  # not a file — try to match a profile name
+  MATCH=""
+  for f in ${PROFILES[@]+"${PROFILES[@]}"}; do
+    if [[ "$(basename "$f" .ovpn)" == *"$CONFIG"* ]]; then MATCH="$f"; break; fi
+  done
+  if [[ -z "$MATCH" ]]; then
+    echo "error: no profile matching '$CONFIG' in $DIR/profiles/" >&2
+    for f in ${PROFILES[@]+"${PROFILES[@]}"}; do
+      echo "  - $(basename "$f" .ovpn)" >&2
+    done
     exit 1
   fi
-fi
-
-# --- locate the .ovpn profile ----------------------------------------
-CONFIG="${1:-}"
-if [[ -z "$CONFIG" ]]; then
-  CONFIG="$(ls "$DIR"/profiles/*.ovpn 2>/dev/null | head -1 || true)"
-fi
-if [[ -z "$CONFIG" || ! -f "$CONFIG" ]]; then
-  echo "error: no .ovpn config found." >&2
-  echo "  Pass one as an argument, or drop it into: $DIR/profiles/" >&2
-  exit 1
+  CONFIG="$MATCH"
+elif [[ -z "$CONFIG" ]]; then
+  if [[ ${#PROFILES[@]} -eq 0 ]]; then
+    echo "error: no .ovpn config found." >&2
+    echo "  Pass one as an argument, or drop it into: $DIR/profiles/" >&2
+    exit 1
+  elif [[ ${#PROFILES[@]} -eq 1 ]]; then
+    CONFIG="${PROFILES[0]}"
+  else
+    echo "Available profiles:"
+    i=1
+    for f in "${PROFILES[@]}"; do
+      server="$(grep -m1 '^remote ' "$f" | awk '{print $2}')"
+      echo "  $i) $(basename "$f" .ovpn)  ($server)"
+      i=$((i + 1))
+    done
+    read -rp "Choose profile [1-${#PROFILES[@]}]: " choice
+    if ! [[ "$choice" =~ ^[0-9]+$ ]] || (( choice < 1 || choice > ${#PROFILES[@]} )); then
+      echo "error: invalid choice" >&2
+      exit 1
+    fi
+    CONFIG="${PROFILES[$((choice - 1))]}"
+  fi
 fi
 echo "==> Using profile: $CONFIG"
 
@@ -89,6 +106,25 @@ cleanup() {
   echo "    reach — remember to toggle the extension OFF."
 }
 trap cleanup EXIT INT TERM HUP
+
+# --- make sure the proxy port is free ---------------------------------
+STALE_PID="$(lsof -ti "tcp:${PORT}" -sTCP:LISTEN 2>/dev/null || true)"
+if [[ -n "$STALE_PID" ]]; then
+  if ps -o comm= -p "$STALE_PID" 2>/dev/null | grep -qi gost; then
+    echo "==> Cleaning up stale proxy from a previous session (pid $STALE_PID)"
+    kill "$STALE_PID" 2>/dev/null || true
+    sleep 1
+    if lsof -ti "tcp:${PORT}" -sTCP:LISTEN >/dev/null 2>&1; then
+      kill -9 "$STALE_PID" 2>/dev/null || true
+      sleep 1
+    fi
+  else
+    echo "error: port $PORT is already in use by another process:" >&2
+    lsof -i "tcp:${PORT}" -sTCP:LISTEN >&2
+    echo "Stop it, or run with a different port: PORT=1081 $0" >&2
+    exit 1
+  fi
+fi
 
 # --- start openvpn, isolated from system routing ----------------------
 echo "==> Starting OpenVPN (system routes will NOT be changed)..."

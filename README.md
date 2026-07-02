@@ -59,9 +59,15 @@ tunnels the whole system again.
 ## Daily use
 
 ```sh
-./vpn-bridge.sh              # uses the first .ovpn in profiles/
-# or: ./vpn-bridge.sh ~/Downloads/myserver.ovpn
+./vpn-bridge.sh              # one profile: uses it; several: shows a menu
+./vpn-bridge.sh eu           # partial name match, e.g. hos-vpn-eu.ovpn
+./vpn-bridge.sh ~/Downloads/myserver.ovpn   # explicit path
 ```
+
+With several `.ovpn` files in `profiles/`, the no-argument form lists
+them with their server addresses and asks you to pick a number. To
+switch servers, Ctrl-C the running bridge and start it again with a
+different choice — Chrome's toggle can stay ON the whole time.
 
 It asks for `sudo` (creating a tun interface requires root), waits for the
 tunnel, then starts the proxy. Leave it running.
