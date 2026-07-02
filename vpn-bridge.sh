@@ -59,6 +59,9 @@ fi
 cleanup() {
   echo
   echo "==> Shutting down..."
+  if [[ -n "${IFACE:-}" ]]; then
+    sudo route -n delete -inet default -ifscope "$IFACE" 2>/dev/null || true
+  fi
   if [[ -f "$PIDFILE" ]]; then
     sudo kill "$(cat "$PIDFILE")" 2>/dev/null || true
     sudo rm -f "$PIDFILE"
@@ -107,6 +110,15 @@ if [[ -z "$IFACE" ]]; then
 fi
 TUN_IP="$(ifconfig "$IFACE" 2>/dev/null | awk '/inet /{print $2; exit}')"
 echo "==> Tunnel up on $IFACE (${TUN_IP:-no ip?}) — system routing untouched."
+
+# macOS scoped routing: sockets bound to the tun interface (IP_BOUND_IF,
+# which is how gost pins its outbound traffic) still consult the routing
+# table, scoped to that interface. With --route-nopull the tun has no
+# routes at all, so give it a default route that is visible ONLY to
+# interface-scoped lookups. The main routing table — and therefore every
+# other app on the system — is unaffected.
+sudo route -n add -inet default -ifscope "$IFACE" -interface "$IFACE" >/dev/null
+echo "==> Added scoped default route on $IFACE (invisible to other apps)."
 
 # --- start the SOCKS5 proxy bound to the tun interface ----------------
 # DNS is resolved over DoH (encrypted), so ISP DNS blocking can't stop
